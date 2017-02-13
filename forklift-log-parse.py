@@ -28,6 +28,8 @@ class CrateParser(object):
     store_functions = {}  # class name: store functions for end of a parse
 
     def __init__(self):
+        self.output_filename = '{}_{}.csv'.format(self.__class__.__name__, date_time_run)
+
         self.pallet = None
         self.add_match_function('processing crates for pallet:', self.set_pallet)
 
@@ -122,7 +124,6 @@ class HashInsertTemp(CrateParser):
     def __init__(self):
         super(HashInsertTemp, self).__init__()
 
-        self.output_filename = 'HashAndInsertTemp_{}.csv'.format(date_time_run)
         self.output_fields = [
             'pallet',
             'dest',
@@ -189,7 +190,6 @@ class Reproject(CrateParser):
     def __init__(self):
         super(Reproject, self).__init__()
 
-        self.output_filename = 'Reproject_{}.csv'.format(date_time_run)
         self.output_fields = [
             'pallet',
             'dest',
@@ -257,6 +257,7 @@ if __name__ == '__main__':
     parsed_sections = [
         HashInsertTemp(),
         Reproject()]
+    print 'Parsing Log file: {}'.format(log_file)
     with open(log_file, 'r') as log:
             for line in log:
                 for substring in CrateParser.get_search_strings():
@@ -265,7 +266,9 @@ if __name__ == '__main__':
                 CrateParser.store_records()
 
     for p in parsed_sections:
-        with open(os.path.join('data/output', p.output_filename), 'w') as out_file:
+        output_path = os.path.normpath(os.path.join('data/output', p.output_filename))
+        print 'Writing output CSV: {}'.format(output_path)
+        with open(output_path, 'w') as out_file:
             writer = csv.writer(out_file)
             writer.writerow(p.output_fields)
             writer.writerows(p.records)
