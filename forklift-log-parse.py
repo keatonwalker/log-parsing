@@ -6,7 +6,7 @@ from time import strftime, strptime
 date_time_run = strftime("%Y%m%d")  # _%H%M%S")
 
 time_matcher = re.compile(r'(\d{2}:\d{2}:\d{2})')
-crate_matcher = re.compile(r"destination': '([^']+)")
+crate_matcher = re.compile(r"destination': u*'([^']+)")
 coord_sys_matcher = re.compile(r"destination_coordinate_system': u'([^']+)")
 pallet_matcher = re.compile(r"lift:   39 processing crates for pallet: ([^\r]+)")
 
@@ -34,7 +34,7 @@ class CrateParser(object):
         self.add_match_function('processing crates for pallet:', self.set_pallet)
 
         self.crate = None
-        self.add_match_function("{   'destination': '", self.set_crate)
+        self.add_match_function("{   'destination': ", self.set_crate)
 
         self.destination_coord_sys = None
         self.add_match_function('destination_coordinate_system', self.set_destination_coord_sys)
@@ -251,24 +251,97 @@ class Reproject(CrateParser):
             self.add_number)
 
 
+class SourceDestination(CrateParser):
+
+    def __init__(self):
+        super(SourceDestination, self).__init__()
+
+        self.output_fields = [
+            'pallet',
+            'dest_path',
+            'src_path',
+            'name']
+
+        self.src_line = 'source\':'
+        self.src_matcher = re.compile(r"source': u*'([^']+)")
+        self.add_match_function(self.src_line, self.src_parse)
+        self.source = None
+
+        self.dest_line = 'destination_name'
+        self.dest_name_matcher = re.compile(r"destination_name': u*'([^']+)")
+        self.add_match_function(self.dest_line, self.dest_name_parse)
+        self.destination_name = None
+
+        self.src_line = 'source\':'
+        self.src_matcher = re.compile(r"source': u*'([^']+)")
+        self.add_match_function(self.src_line, self.src_parse)
+        self.source = None
+
+        self.src_line = 'source_name'
+        self.src_name_matcher = re.compile(r"source_name': u*'([^']+)")
+        self.add_match_function(self.src_line, self.src_name_parse)
+        self.source_name = None
+
+    def dest_name_parse(self, line):
+        dest_name = self.dest_name_matcher.search(line).group(1)
+        self.destination_name = dest_name
+
+    def src_parse(self, line):
+        src = self.src_matcher.search(line).group(1)
+        self.source = src
+
+    def src_name_parse(self, line):
+        src_name = self.src_name_matcher.search(line).group(1)
+        self.source_name = src_name
+        return self.store_record
+
+    def reset_fields(self):
+        self.crate = None
+        self.destination_name = None
+        self.source = None
+        self.source_name = None
+
+    def get_record(self):
+        return (
+            self.pallet,
+            self.crate,
+            self.source,
+            self.destination_name)
+
+    def __str__(self):
+        return '{},{},{},{},{}'.format(
+            self.pallet,
+            self.crate,
+            self.source,
+            self.destination_name)
+
+
 if __name__ == '__main__':
-    log_file = os.path.normpath('data/logs/forklift_2_13.log')
+    log_file = os.path.normpath('data/logs/forklift_6_1_17.log')
 
     parsed_sections = [
-        HashInsertTemp(),
-        Reproject()]
+        SourceDestination()]
     print 'Parsing Log file: {}'.format(log_file)
     with open(log_file, 'r') as log:
             for line in log:
                 for substring in CrateParser.get_search_strings():
                     if substring in line:
-                        CrateParser.call_match_functions(substring, line)
+                        try:
+                            CrateParser.call_match_functions(substring, line)
+                        except Exception as e:
+                            print line
+                            raise(e)
+
                 CrateParser.store_records()
 
     for p in parsed_sections:
-        output_path = os.path.normpath(os.path.join('data/output', p.output_filename))
-        print 'Writing output CSV: {}'.format(output_path)
-        with open(output_path, 'w') as out_file:
-            writer = csv.writer(out_file)
-            writer.writerow(p.output_fields)
-            writer.writerows(p.records)
+        print len(set(p.records))
+        for r in p.records:
+            print """Crate('{1}',\n{0}'{2}',\n{0}'{3}'),""".format(' ' * 6, r[1], r[2], r[3])
+
+        # output_path = os.path.normpath(os.path.join('data/output', p.output_filename))
+        # print 'Writing output CSV: {}'.format(output_path)
+        # with open(output_path, 'w') as out_file:
+        #     writer = csv.writer(out_file)
+        #     writer.writerow(p.output_fields)
+        #     writer.writerows(p.records)
